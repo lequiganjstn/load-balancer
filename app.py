@@ -3,7 +3,6 @@ import argparse
 import json
 import math
 import os
-import re
 import random
 import threading
 import time
@@ -62,9 +61,8 @@ async function refresh(){
 }
 async function addWorker(){
   const address=document.getElementById('workerIp').value.trim();
-  if(!address){ log('Please enter an IP or host.'); return; }
-  const res=await api('/api/workers','POST',{address});
-  if(res.error){ log('Add worker failed: '+res.error); return; }
+  if(!address) return;
+  await api('/api/workers','POST',{address});
   document.getElementById('workerIp').value='';
   await refresh();
 }
@@ -125,17 +123,6 @@ class State:
     lock = threading.Lock()
 
 
-def normalize_worker_address(raw: str) -> str:
-    addr = raw.strip()
-    addr = re.sub(r"^https?://", "", addr, flags=re.IGNORECASE)
-    addr = addr.rstrip("/")
-    if not addr:
-        return ""
-    if ":" not in addr:
-        addr = f"{addr}:8001"
-    return addr
-
-
 class CoordinatorHandler(BaseHTTPRequestHandler):
     def _json(self, status, payload):
         body = json.dumps(payload).encode()
@@ -167,11 +154,9 @@ class CoordinatorHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/workers":
             data = self._read_json()
-            address = normalize_worker_address(data.get("address", ""))
+            address = data.get("address", "").strip()
             if not address:
                 return self._json(400, {"error": "address required"})
-            if not re.match(r"^[A-Za-z0-9_.-]+:\d{1,5}$", address):
-                return self._json(400, {"error": "use format host:port (example 192.168.1.25:8001)"})
             with State.lock:
                 State.workers.setdefault(address, {"status": "unknown", "last_result": ""})
             return self._json(200, {"ok": True})
